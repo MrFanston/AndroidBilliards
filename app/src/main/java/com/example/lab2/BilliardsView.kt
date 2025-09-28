@@ -1,4 +1,4 @@
-package com.example.billiard // Пакет, в котором находится класс
+package com.example.lab2 // Пакет, в котором находится класс
 
 import android.content.Context // Импорт для доступа к ресурсам и информации о приложении
 import android.graphics.Color // Импорт для работы с цветами
@@ -64,57 +64,72 @@ class BilliardsView(context: Context) : SurfaceView(context), SurfaceHolder.Call
         pockets.add(Pocket(w, h / 2f, pocketR))
 
         // Формирование пирамиды шаров по правилам "восьмерки"
-        val startX = w / 2 // Начальная X-координата для центра пирамиды
-        val startY = 300f // Начальная Y-координата для вершины пирамиды
-        val rows = 5 // Количество рядов в пирамиде
+        val startX = w / 2 // Центральная точка для пирамиды по X
+        val startY = 300f  // Y-координата вершины пирамиды
+        val rows = 5       // Количество рядов в пирамиде
 
-        // Подготовка номеров шаров для расстановки
-        val solidBalls = mutableListOf(1, 2, 3, 4, 5, 6, 7) // "Сплошные" шары
-        val stripedBalls = mutableListOf(9, 10, 11, 12, 13, 14, 15) // "Полосатые" шары
-        val blackBall = 8 // Черный шар
+        // Подготовка списков шаров
+        val solidBalls = mutableListOf(1, 2, 3, 4, 5, 6, 7).shuffled().toMutableList()
+        val stripedBalls = mutableListOf(9, 10, 11, 12, 13, 14, 15).shuffled().toMutableList()
+        val blackBallNumber = 8
 
-        val triangleBalls = mutableListOf<Int>() // Список номеров шаров в порядке их расположения в треугольнике
+        // Создаем массив для 15 позиций в пирамиде
+        val pyramidLayout = arrayOfNulls<Int>(15)
 
-        // Вершина пирамиды (ряд 1) - всегда сплошной шар
-        triangleBalls.add(solidBalls.random().also { solidBalls.remove(it) })
-
-        // Остальные 13 шаров перемешиваются
-        val remainingBalls = (solidBalls + stripedBalls).shuffled()
-        triangleBalls.addAll(remainingBalls)
-
-        // Вставка 8-го шара
-        if (triangleBalls.size > 8) { // Проверка, чтобы не выйти за пределы списка
-            triangleBalls.add(8, blackBall) // Добавляем 8-ку на 9-ю позицию (индекс 8)
+        // Вершина пирамиды (позиция 0)
+        // Может быть любой, кроме черного. Возьмем первый из сплошных или полосатых.
+        if (solidBalls.isNotEmpty()) {
+            pyramidLayout[0] = solidBalls.removeAt(0)
         } else {
-            triangleBalls.add(blackBall) // Если шаров мало, просто добавляем в конец
+            pyramidLayout[0] = stripedBalls.removeAt(0)
         }
 
-        // Размещение шаров в пирамиде на столе
-        var ballIndex = 0 // Индекс для выбора номера шара из triangleBalls
-        for (row in 0 until rows) { // Итерация по рядам пирамиды
-            val actualBallsInRow = rows - row // Количество шаров в текущем ряду (5, 4, 3, 2, 1)
-            val yPos = startY + row * (radius * 2 * 0.866f)
-            val currentStartX = startX - (actualBallsInRow - 1) * radius // Начальный X для текущего ряда
+        // Углы последнего ряда (позиции 10 и 14 для 5-рядной пирамиды)
+        // Должны быть один сплошной и один полосатый
+        if (solidBalls.isNotEmpty() && stripedBalls.isNotEmpty()) {
+            pyramidLayout[10] = solidBalls.removeAt(0) // Левый угол основания
+            pyramidLayout[14] = stripedBalls.removeAt(0) // Правый угол основания
+        } else {
+            // Если одного из типов не осталось (не должно произойти при стандартном наборе)
+            // просто заполняем оставшимися
+            val remainingForCorners = (solidBalls + stripedBalls).shuffled().toMutableList()
+            if (remainingForCorners.isNotEmpty()) pyramidLayout[10] = remainingForCorners.removeAt(0)
+            if (remainingForCorners.isNotEmpty()) pyramidLayout[14] = remainingForCorners.removeAt(0)
+        }
 
-            for (i in 0 until actualBallsInRow) {
-                val xPos = currentStartX + i * (radius * 2)
-                if (ballIndex < triangleBalls.size) {
-                    val number = triangleBalls[ballIndex]
-                    val color = getBallColor(number)
-                    balls.add(Ball(xPos, yPos, radius, number, color))
-                    ballIndex++
-                } else if (ballIndex == triangleBalls.size && !triangleBalls.contains(blackBall)) {
-                    // Если восьмерка не была добавлена и все остальные шары расставлены,
-                    // пытаемся добавить ее на свободное место
-                    val number = blackBall
-                    val color = getBallColor(number)
-                    balls.add(Ball(xPos, yPos, radius, number, color))
-                    triangleBalls.add(blackBall) // Отмечаем, что восьмерка добавлена
-                    ballIndex++
+        // Черный шар (8-ка) - центр третьего ряда (позиция 4 для 0-индексации)
+        pyramidLayout[4] = blackBallNumber
+
+        // Заполнение остальных позиций пирамиды
+        val remainingBallsForPyramid = (solidBalls + stripedBalls).shuffled().toMutableList()
+        for (i in pyramidLayout.indices) {
+            if (pyramidLayout[i] == null) { // Если позиция еще не занята
+                if (remainingBallsForPyramid.isNotEmpty()) {
+                    pyramidLayout[i] = remainingBallsForPyramid.removeAt(0)
                 }
             }
         }
 
+        // Расстановка шаров на столе
+        var ballIndexInPyramid = 0
+        for (row in 0 until rows) { // Итерация по рядам пирамиды (0-4)
+            val ballsInRow = row + 1 // Количество шаров в текущем ряду (1, 2, 3, 4, 5)
+            val yPos = startY + (rows - 1 - row) * (radius * 2 * 0.866f)// 0.866f это sin(60 градусов) для плотной упаковки
+            // Начальный X для текущего ряда, чтобы пирамида была центрирована
+            val currentStartX = startX - row * radius
+
+            for (i in 0 until ballsInRow) {
+                val xPos = currentStartX + i * (radius * 2)
+                if (ballIndexInPyramid < pyramidLayout.size) {
+                    val number = pyramidLayout[ballIndexInPyramid]
+                    if (number != null) { // Убедимся, что номер шара не null
+                        val color = getBallColor(number)
+                        balls.add(Ball(xPos, yPos, radius, number, color))
+                    }
+                    ballIndexInPyramid++
+                }
+            }
+        }
 
         running = true // Устанавливаем флаг, что игровой цикл запущен
         gameThread = Thread(this) // Создаем новый поток для игры, передавая текущий объект BilliardsView (который Runnable)
